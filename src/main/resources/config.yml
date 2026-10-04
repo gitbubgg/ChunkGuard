@@ -1,0 +1,57 @@
+# Load thresholds. On Paper, MSPT comes from Bukkit.getAverageTickTime().
+# On Folia there is no global MSPT, so each region's tick interval is measured instead.
+load:
+  mspt-throttle: 45.0            # level 1 (throttle moving players)
+  mspt-critical: 50.0            # level 2 (hard throttle)
+  folia-interval-throttle-ms: 52.0
+  folia-interval-critical-ms: 60.0
+  max-new-chunks-per-second-per-region: 24   # generation intake cap, above this forces level 1
+
+# Send view distance applied per level. Moving players are cut first.
+view-distance:
+  normal: 10
+  throttled: 6
+  critical: 3
+  stationary-or-combat-keeps-normal: true
+  combat-grace-seconds: 10
+
+travel:
+  speed-threshold-bps: 40.0      # blocks per second (elytra rockets, custom vehicles)
+  teleport-threshold-blocks: 512 # long teleports such as /rtp
+  lookahead-chunks: 4            # frontier probe: is the chunk ahead unloaded?
+  boosted-view-distance: 4
+  boost-ticks: 100
+  dampen-gliding-velocity: 0.7   # 1.0 disables the brief velocity pause
+
+# Trailing unload: chunks behind a fast flyer are flushed quickly. Returning players just reload from disk.
+trail:
+  enabled: true
+  only-under-load: true     # skip when the region is healthy, avoids pointless reload churn
+  dwell-seconds: 6          # grace period so brief backtracking does not thrash
+  max-tracked-chunks: 20000 # hard cap on memory used by tracking
+
+# Underground mode: a player deep below the surface with no sky access cannot use far chunks, so stop sending them.
+# Chunks within the reduced radius still load normally, so digging toward the surface or a cave loads terrain as you go.
+underground:
+  enabled: true
+  min-depth: 30          # blocks below the surface height at the player's position
+  view-distance: 3       # chunks (16 blocks each). 2 is about a 32 block gap, 3 is about 48
+  simulation-distance: 4        # 0 disables. Stops ticking surface mobs/crops/farms around underground players
+  only-if-no-surface-players: true  # only reduce when nobody on the surface (or flying) is in the same 512x512 area
+  confirm-seconds: 3     # must stay underground this long, avoids flapping in caves and ravines
+
+# Airborne profile (elytra, high flight). Separate from ground and underground rules: flyers can see far, so they get a
+# wider view than ground players at the same load level, with the clamp applied only when speed outruns the generator.
+airborne:
+  enabled: true
+  min-height: 40          # blocks above the surface counts as airborne even without an elytra
+  throttled-view: 8       # at load level 1
+  critical-view: 5        # at load level 2
+  boosted-view: 6         # while flying fast toward unloaded terrain (ground players use travel.boosted-view-distance)
+
+reaper:
+  enabled: true
+  sweep-period-ticks: 200
+  min-dwell-seconds: 20
+  max-inhabited-ticks: 200       # above this a chunk counts as really visited
+  max-per-sweep: 512

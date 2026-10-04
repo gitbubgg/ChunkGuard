@@ -1,0 +1,13 @@
+name: ChunkGuard
+main: dev.chunkguard.ChunkGuardPlugin
+version: 1.0.0
+api-version: '26.2'
+folia-supported: true
+commands:
+  chunkguard:
+    description: ChunkGuard admin
+    usage: /chunkguard <status|metrics|reload>
+    aliases: [cg]
+permissions:
+  chunkguard.admin:
+    default: op
