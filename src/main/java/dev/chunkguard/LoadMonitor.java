@@ -33,7 +33,11 @@ final class LoadMonitor {
     private final Map<UUID, PlayerState> states = new ConcurrentHashMap<>();
     private volatile double paperMspt = 0;
 
+    private volatile ChunkReaper reaper;
+    private final java.util.concurrent.atomic.LongAdder fastTravelHits = new java.util.concurrent.atomic.LongAdder();
+
     LoadMonitor(ChunkGuardPlugin plugin, Settings s) { this.plugin = plugin; this.s = s; }
+    void setReaper(ChunkReaper reaper) { this.reaper = reaper; }
 
     void reload(Settings s) { this.s = s; }
     PlayerState state(Player p) { return states.computeIfAbsent(p.getUniqueId(), k -> new PlayerState()); }
@@ -61,12 +65,38 @@ final class LoadMonitor {
             cell.stampMs = System.currentTimeMillis();
 
             if (++st.tick % 20 == 0) {                               // evaluate once a second, not every tick
-                st.stationary = st.last != null && st.last.getWorld() == loc.getWorld() && st.last.distanceSquared(loc) < 1.0;
+                boolean sameWorld = st.last != null && st.last.getWorld() == loc.getWorld();
+                st.stationary = sameWorld && st.last.distanceSquared(loc) < 1.0;
+                if (sameWorld) detectFastTravel(st, st.last, loc);
                 st.last = loc;
                 updateUnderground(p, loc, st);
                 apply(p, st, level(cell));
             }
         }, () -> states.remove(p.getUniqueId()), 1, 1);              // 'retired' callback cleans up on quit
+    }
+
+    /**
+     * Speed from displacement over the ~1 second heartbeat window. Unlike PlayerMoveEvent this also catches
+     * teleport-driven movement and costs one distance check per player per second instead of one per tick.
+     * Runs on the player's own region thread. Samples the path every ~16 blocks (max 64 samples) so even a very
+     * long jump only queues a bounded number of trail chunks.
+     */
+    private void detectFastTravel(PlayerState st, Location from, Location to) {
+        Settings cfg = s;
+        double dx = to.getX() - from.getX(), dz = to.getZ() - from.getZ();
+        double bps = Math.sqrt(dx * dx + dz * dz);
+        if (bps < cfg.speedBps()) return;
+        fastTravelHits.increment();
+        st.boostUntilTick = st.tick + cfg.boostTicks();               // clamp view distance for a few seconds
+        ChunkReaper r = reaper;
+        if (r != null && cfg.trailOn() && (!cfg.trailUnderLoad() || st.level > 0)) {
+            int steps = (int) Math.min(64, Math.max(1, bps / 16));
+            UUID world = from.getWorld().getUID();
+            for (int i = 0; i <= steps; i++) {
+                double t = (double) i / steps;
+                r.trackTrail(world, (int) Math.floor(from.getX() + dx * t) >> 4, (int) Math.floor(from.getZ() + dz * t) >> 4);
+            }
+        }
     }
 
     /** Called from ChunkLoadEvent (region thread) for freshly generated chunks. */
@@ -152,7 +182,11 @@ final class LoadMonitor {
         return "platform=" + (FOLIA ? "Folia" : "Paper") + (FOLIA ? "" : " mspt=" + String.format("%.1f", paperMspt))
                 + " activeRegions=" + cells.size() + " throttledRegions=" + hot
                 + " worstRegionIntervalMs=" + String.format("%.1f", worst)
-                + " players=" + states.size() + " boosted=" + boosted;
+                + " players=" + states.size() + " boosted=" + boosted
+                + " underground=" + states.values().stream().filter(p -> p.underground).count()
+                + " airborne=" + states.values().stream().filter(p -> p.airborne).count()
+                + " simReduced=" + states.values().stream().filter(p -> p.simReduced).count()
+                + " fastTravelHits=" + fastTravelHits.sum();
     }
 
     private static long cellKey(Location l) {
@@ -160,6 +194,11 @@ final class LoadMonitor {
         return (cx << 32) ^ (cz & 0xffffffffL) ^ ((long) l.getWorld().getUID().hashCode() << 48);
     }
 
+    private static boolean detectFolia() {
+        try { Class.forName("io.papermc.paper.threadedregions.RegionizedServer"); return true; }
+        catch (ClassNotFoundException e) { return false; }
+    }
+}
     private static boolean detectFolia() {
         try { Class.forName("io.papermc.paper.threadedregions.RegionizedServer"); return true; }
         catch (ClassNotFoundException e) { return false; }
