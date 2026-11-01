@@ -17,6 +17,7 @@ public final class ChunkGuardPlugin extends JavaPlugin {
         Settings s = Settings.load(getConfig());
         monitor = new LoadMonitor(this, s);
         reaper = new ChunkReaper(this, s);
+        monitor.setReaper(reaper);
         travel = new TravelListener(monitor, reaper, s);
 
         getServer().getPluginManager().registerEvents(travel, this);
