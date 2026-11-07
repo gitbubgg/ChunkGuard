@@ -199,8 +199,5 @@ final class LoadMonitor {
         catch (ClassNotFoundException e) { return false; }
     }
 }
-    private static boolean detectFolia() {
-        try { Class.forName("io.papermc.paper.threadedregions.RegionizedServer"); return true; }
-        catch (ClassNotFoundException e) { return false; }
     }
 }
