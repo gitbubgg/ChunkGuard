@@ -199,5 +199,3 @@ final class LoadMonitor {
         catch (ClassNotFoundException e) { return false; }
     }
 }
-    }
-}
